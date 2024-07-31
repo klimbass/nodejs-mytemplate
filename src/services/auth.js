@@ -10,6 +10,11 @@ import { SMTP, TEMPLATES_DIR } from '../constants/index.js';
 import handlebars from 'handlebars';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import {
+  getFullNameFromGoogleTokenPayload,
+  validateCode,
+} from '../utils/googleOAuth2.js';
+import { randomBytes } from 'node:crypto';
 
 export const registerUser = async (payload) => {
   const email = payload.email;
@@ -135,4 +140,29 @@ export const resetPassword = async (payload) => {
       password: encryptedPwd,
     },
   );
+};
+
+export const loginOrSignupWithGoogle = async (code) => {
+  const loginTicket = await validateCode(code);
+  const payload = loginTicket.getPayload();
+  if (!payload) {
+    throw createHttpError(401, 'Unauthorized');
+  }
+  let user = await UsersCollection.findOne({
+    email: payload.email,
+  });
+  if (!user) {
+    const password = await bcrypt.hash(randomBytes(10), 10);
+    user = await UsersCollection.create({
+      name: getFullNameFromGoogleTokenPayload(payload),
+      email: payload.email,
+      password,
+      role: 'parent',
+    });
+  }
+  const newSession = createSession();
+  return await SessionCollection.create({
+    userId: user._id,
+    ...newSession,
+  });
 };
