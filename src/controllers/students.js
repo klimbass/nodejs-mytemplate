@@ -10,6 +10,9 @@ import createHttpError from 'http-errors';
 import { parsePaginationParams } from '../utils/parsePaginationParams.js';
 import parseSortParams from '../utils/parseSortParams.js';
 import parseFilterParams from '../utils/parseFilterParams.js';
+import { saveFileToUploadDir } from '../utils/saveFileToUploadDir.js';
+import { env } from '../utils/env.js';
+import { saveFileToCloudinary } from '../utils/saveFileToCloudinary.js';
 
 export const getStudentsController = async (req, res) => {
   const { page, perPage } = parsePaginationParams(req.query);
@@ -58,7 +61,16 @@ export const getStudentByIdController = async (req, res, next) => {
 };
 
 export const createStudentsController = async (req, res) => {
-  const student = await createStudent(req.body);
+  const photo = req.file;
+  let photoURL;
+  if (photo) {
+    if (env('ENABLE_CLOUDINARY') === 'true') {
+      photoURL = await saveFileToCloudinary(photo);
+    } else {
+      photoURL = await saveFileToUploadDir(photo);
+    }
+  }
+  const student = await createStudent({ ...req.body, photo: photoURL });
   res.status(201).json({
     status: 201,
     message: `Successfully created a student!`,
@@ -81,10 +93,23 @@ export const deleteStudentController = async (req, res, next) => {
 
 export const upsertStudentController = async (req, res, next) => {
   const { studentId } = req.params;
+  const photo = req.file;
 
-  const result = await updateStudent(studentId, req.body, {
-    upsert: true,
-  });
+  let photoURL;
+  if (photo) {
+    if (env('ENABLE_CLOUDINARY') === 'true') {
+      photoURL = await saveFileToCloudinary(photo);
+    } else {
+      photoURL = await saveFileToUploadDir(photo);
+    }
+  }
+  const result = await updateStudent(
+    studentId,
+    { ...req.body, photo: photoURL },
+    {
+      upsert: true,
+    },
+  );
 
   if (!result) {
     next(createHttpError(404, 'Student not found'));
@@ -102,7 +127,21 @@ export const upsertStudentController = async (req, res, next) => {
 
 export const patchStudentController = async (req, res, next) => {
   const { studentId } = req.params;
-  const result = await updateStudent(studentId, req.body);
+  const photo = req.file;
+
+  let photoURL;
+  if (photo) {
+    if (env('ENABLE_CLOUDINARY') === 'true') {
+      photoURL = await saveFileToCloudinary(photo);
+    } else {
+      photoURL = await saveFileToUploadDir(photo);
+    }
+  }
+
+  const result = await updateStudent(studentId, {
+    ...req.body,
+    photo: photoURL,
+  });
 
   if (!result) {
     next(createHttpError(404, 'Student not found'));
